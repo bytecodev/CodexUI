@@ -7,11 +7,15 @@ local NotificationModule = {
 	SizeLower = UDim2.new(0, 300, 1, -56),
 	UICorner = 18,
 	UIPadding = 14,
-	--ButtonPadding = 9,
 	Holder = nil,
 	NotificationIndex = 0,
 	Notifications = {},
+	ById = {},
+	Queue = {},
+	QueueActive = nil,
 }
+
+local StartNextQueued
 
 function NotificationModule.Init(Parent)
 	local NotModule = {
@@ -29,10 +33,6 @@ function NotificationModule.Init(Parent)
 		Size = NotificationModule.Size,
 		Parent = Parent,
 		BackgroundTransparency = 1,
-		--[[ScrollingDirection = "Y",
-        ScrollBarThickness = 0,
-        CanvasSize = UDim2.new(0,0,0,0),
-        AutomaticCanvasSize = "Y",--]]
 	}, {
 		New("UIListLayout", {
 			HorizontalAlignment = "Center",
@@ -47,58 +47,67 @@ function NotificationModule.Init(Parent)
 	return NotModule
 end
 
-function NotificationModule.New(Config)
+function NotificationModule.New(Config, QueueStarted)
+	Config = Config or {}
+
+	local Id = Config.Id and tostring(Config.Id) or nil
+	if Id and Config.Replace then
+		local Existing = NotificationModule.ById[Id]
+		if Existing and not Existing.Closed and Existing.Update then
+			Existing:Update(Config)
+			return Existing
+		end
+	end
+
+	if Config.Queue == true and not QueueStarted then
+		if NotificationModule.QueueActive and not NotificationModule.QueueActive.Closed then
+			local QueueEntry = {
+				Config = Config,
+				Cancelled = false,
+				Queued = true,
+				Id = Id,
+			}
+
+			function QueueEntry:Close()
+				QueueEntry.Cancelled = true
+			end
+
+			table.insert(NotificationModule.Queue, QueueEntry)
+			return QueueEntry
+		end
+
+	end
+
 	local Notification = {
+		Id = Id,
 		Title = Config.Title or "Notification",
 		Content = Config.Content or nil,
 		Icon = Config.Icon or nil,
 		IconThemed = Config.IconThemed,
 		Background = Config.Background,
 		BackgroundImageTransparency = Config.BackgroundImageTransparency,
-		Duration = Config.Duration or 5,
+		Duration = Config.Duration == nil and 5 or Config.Duration,
 		Buttons = Config.Buttons or {},
 		CanClose = Config.CanClose ~= false,
+		Queued = Config.Queue == true,
 		UIElements = {},
 		Closed = false,
+		TimerGeneration = 0,
 	}
-	--[[if Notification.CanClose == nil then
-        Notification.CanClose = true
-    end--]]
-	NotificationModule.NotificationIndex = NotificationModule.NotificationIndex + 1
-	NotificationModule.Notifications[NotificationModule.NotificationIndex] = Notification
 
-	-- local UIStroke = New("UIStroke", {
-	--     ThemeTag = {
-	--         Color = "Text"
-	--     },
-	--     Transparency = 1, -- - .9
-	--     Thickness = .6,
-	-- })
+	NotificationModule.NotificationIndex = NotificationModule.NotificationIndex + 1
+	Notification.Index = NotificationModule.NotificationIndex
+	NotificationModule.Notifications[Notification.Index] = Notification
+
+	if Notification.Id then
+		NotificationModule.ById[Notification.Id] = Notification
+	end
+	if Notification.Queued then
+		NotificationModule.QueueActive = Notification
+	end
 
 	local Icon
-
 	if Notification.Icon then
-		-- if Creator.Icon(Notification.Icon) and Creator.Icon(Notification.Icon)[2] then
-		--     Icon = New("ImageLabel", {
-		--         Size = UDim2.new(0,26,0,26),
-		--         Position = UDim2.new(0,NotificationModule.UIPadding,0,NotificationModule.UIPadding),
-		--         BackgroundTransparency = 1,
-		--         Image = Creator.Icon(Notification.Icon)[1],
-		--         ImageRectSize = Creator.Icon(Notification.Icon)[2].ImageRectSize,
-		--         ImageRectOffset = Creator.Icon(Notification.Icon)[2].ImageRectPosition,
-		--         ThemeTag = {
-		--             ImageColor3 = "Text"
-		--         }
-		--     })
-		-- elseif string.find(Notification.Icon, "rbxassetid") then
-		--     Icon = New("ImageLabel", {
-		--         Size = UDim2.new(0,26,0,26),
-		--         BackgroundTransparency = 1,
-		--         Position = UDim2.new(0,NotificationModule.UIPadding,0,NotificationModule.UIPadding),
-		--         Image = Notification.Icon
-		--     })
-		-- end
-
 		Icon = Creator.Image(
 			Notification.Icon,
 			Notification.Title .. ":" .. Notification.Icon,
@@ -109,7 +118,6 @@ function NotificationModule.New(Config)
 		)
 		Icon.Size = UDim2.new(0, 26, 0, 26)
 		Icon.Position = UDim2.new(0, NotificationModule.UIPadding, 0, NotificationModule.UIPadding)
-		-- Icon.LayoutOrder = -1
 	end
 
 	local CloseButton
@@ -143,7 +151,22 @@ function NotificationModule.New(Config)
 			ImageTransparency = "NotificationDurationTransparency",
 			ImageColor3 = "NotificationDuration",
 		},
-		--Visible = false,
+	})
+
+	local TitleLabel = New("TextLabel", {
+		AutomaticSize = "Y",
+		Size = UDim2.new(1, -30 - NotificationModule.UIPadding, 0, 0),
+		TextWrapped = true,
+		TextXAlignment = "Left",
+		RichText = true,
+		BackgroundTransparency = 1,
+		TextSize = 18,
+		ThemeTag = {
+			TextColor3 = "NotificationTitle",
+			TextTransparency = "NotificationTitleTransparency",
+		},
+		Text = Notification.Title,
+		FontFace = Font.new(Creator.Font, Enum.FontWeight.SemiBold),
 	})
 
 	local TextContainer = New("Frame", {
@@ -159,45 +182,46 @@ function NotificationModule.New(Config)
 			PaddingRight = UDim.new(0, NotificationModule.UIPadding),
 			PaddingBottom = UDim.new(0, NotificationModule.UIPadding),
 		}),
-		New("TextLabel", {
-			AutomaticSize = "Y",
-			Size = UDim2.new(1, -30 - NotificationModule.UIPadding, 0, 0),
-			TextWrapped = true,
-			TextXAlignment = "Left",
-			RichText = true,
-			BackgroundTransparency = 1,
-			TextSize = 18,
-			ThemeTag = {
-				TextColor3 = "NotificationTitle",
-				TextTransparency = "NotificationTitleTransparency",
-			},
-			Text = Notification.Title,
-			FontFace = Font.new(Creator.Font, Enum.FontWeight.SemiBold),
-		}),
+		TitleLabel,
 		New("UIListLayout", {
 			Padding = UDim.new(0, NotificationModule.UIPadding / 3),
 		}),
 	})
 
-	if Notification.Content then
-		New("TextLabel", {
-			AutomaticSize = "Y",
-			Size = UDim2.new(1, 0, 0, 0),
-			TextWrapped = true,
-			TextXAlignment = "Left",
-			RichText = true,
-			BackgroundTransparency = 1,
-			--TextTransparency = .4,
-			TextSize = 15,
-			ThemeTag = {
-				TextColor3 = "NotificationContent",
-				TextTransparency = "NotificationContentTransparency",
-			},
-			Text = Notification.Content,
-			FontFace = Font.new(Creator.Font, Enum.FontWeight.Medium),
-			Parent = TextContainer,
-		})
+	local ContentLabel
+	local function SetContent(Content)
+		Notification.Content = Content
+		if Content == nil or tostring(Content) == "" then
+			if ContentLabel then
+				ContentLabel:Destroy()
+				ContentLabel = nil
+			end
+			Notification.UIElements.Content = nil
+			return
+		end
+
+		if not ContentLabel then
+			ContentLabel = New("TextLabel", {
+				AutomaticSize = "Y",
+				Size = UDim2.new(1, 0, 0, 0),
+				TextWrapped = true,
+				TextXAlignment = "Left",
+				RichText = true,
+				BackgroundTransparency = 1,
+				TextSize = 15,
+				ThemeTag = {
+					TextColor3 = "NotificationContent",
+					TextTransparency = "NotificationContentTransparency",
+				},
+				FontFace = Font.new(Creator.Font, Enum.FontWeight.Medium),
+				Parent = TextContainer,
+			})
+		end
+		ContentLabel.Text = tostring(Content)
+		Notification.UIElements.Content = ContentLabel
 	end
+
+	SetContent(Notification.Content)
 
 	local Main = Creator.NewRoundFrame(NotificationModule.UICorner, "Squircle", {
 		Size = UDim2.new(1, 0, 0, 0),
@@ -208,7 +232,6 @@ function NotificationModule.New(Config)
 		ThemeTag = {
 			ImageColor3 = "Notification",
 		},
-		--ZIndex = 20
 	}, {
 		Creator.NewRoundFrame(NotificationModule.UICorner, "Squircle", {
 			Size = UDim2.new(1, 0, 1, 0),
@@ -222,23 +245,13 @@ function NotificationModule.New(Config)
 			BackgroundTransparency = 1,
 			Name = "DurationFrame",
 		}, {
-			--[[Creator.NewRoundFrame(NotificationModule.UICorner, "SquircleOutline", {
-				Size = UDim2.new(1, 0, 1, 0),
-				ImageTransparency = 0.8,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-			}),]]
 			New("Frame", {
-				Size = UDim2.new(1, 0, 1, 0), -- 0,0,1,0
+				Size = UDim2.new(1, 0, 1, 0),
 				BackgroundTransparency = 1,
 				ClipsDescendants = true,
 			}, {
 				Duration,
 			}),
-
-			-- New("UICorner", {
-			--     CornerRadius = UDim.new(0,NotificationModule.UICorner),
-			-- })
 		}),
 		New("ImageLabel", {
 			Name = "Background",
@@ -247,13 +260,11 @@ function NotificationModule.New(Config)
 			Size = UDim2.new(1, 0, 1, 0),
 			ScaleType = "Crop",
 			ImageTransparency = Notification.BackgroundImageTransparency,
-			--ZIndex = 19,
 		}, {
 			New("UICorner", {
 				CornerRadius = UDim.new(0, NotificationModule.UICorner),
 			}),
 		}),
-
 		TextContainer,
 		Icon,
 		CloseButton,
@@ -267,33 +278,26 @@ function NotificationModule.New(Config)
 		Main,
 	})
 
-	function Notification:Close()
-		if not Notification.Closed then
-			Notification.Closed = true
-			Tween(
-				MainContainer,
-				0.45,
-				{ Size = UDim2.new(1, 0, 0, -8) },
-				Enum.EasingStyle.Quint,
-				Enum.EasingDirection.Out
-			):Play()
-			Tween(Main, 0.55, { Position = UDim2.new(2, 0, 1, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-			task.wait(0.45)
-			MainContainer:Destroy()
-		end
-	end
+	Notification.UIElements.Main = Main
+	Notification.UIElements.Container = MainContainer
+	Notification.UIElements.Title = TitleLabel
+	Notification.UIElements.Content = ContentLabel
 
-	task.spawn(function()
-		task.wait()
-		Tween(
-			MainContainer,
-			0.45,
-			{ Size = UDim2.new(1, 0, 0, Main.AbsoluteSize.Y) },
-			Enum.EasingStyle.Quint,
-			Enum.EasingDirection.Out
-		):Play()
-		Tween(Main, 0.45, { Position = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-		if Notification.Duration then
+	function Notification:_StartDurationTimer()
+		Notification.TimerGeneration = Notification.TimerGeneration + 1
+		local Generation = Notification.TimerGeneration
+
+		if not Notification.Duration or tonumber(Notification.Duration) == nil or Notification.Duration <= 0 then
+			return
+		end
+
+		task.spawn(function()
+			task.wait()
+			if Notification.Closed or Generation ~= Notification.TimerGeneration then
+				return
+			end
+
+			Main.DurationFrame.Frame.Size = UDim2.new(1, 0, 1, 0)
 			Duration.Size = UDim2.new(0, Main.DurationFrame.AbsoluteSize.X, 1, 0)
 			Tween(
 				Main.DurationFrame.Frame,
@@ -302,9 +306,87 @@ function NotificationModule.New(Config)
 				Enum.EasingStyle.Linear,
 				Enum.EasingDirection.InOut
 			):Play()
+
 			task.wait(Notification.Duration)
-			Notification:Close()
+			if not Notification.Closed and Generation == Notification.TimerGeneration then
+				Notification:Close()
+			end
+		end)
+	end
+
+	function Notification:Update(NewConfig)
+		if Notification.Closed then
+			return Notification
 		end
+
+		if NewConfig.Title ~= nil then
+			Notification.Title = tostring(NewConfig.Title)
+			TitleLabel.Text = Notification.Title
+		end
+		if NewConfig.Content ~= nil then
+			SetContent(NewConfig.Content)
+		end
+		if NewConfig.Duration ~= nil then
+			Notification.Duration = NewConfig.Duration
+		end
+
+		task.defer(function()
+			if not Notification.Closed then
+				MainContainer.Size = UDim2.new(1, 0, 0, Main.AbsoluteSize.Y)
+			end
+		end)
+
+		Notification:_StartDurationTimer()
+		return Notification
+	end
+
+	function Notification:Close()
+		if Notification.Closed then
+			return
+		end
+
+		Notification.Closed = true
+		Notification.TimerGeneration = Notification.TimerGeneration + 1
+
+		if Notification.Id and NotificationModule.ById[Notification.Id] == Notification then
+			NotificationModule.ById[Notification.Id] = nil
+		end
+		NotificationModule.Notifications[Notification.Index] = nil
+
+		Tween(
+			MainContainer,
+			0.45,
+			{ Size = UDim2.new(1, 0, 0, -8) },
+			Enum.EasingStyle.Quint,
+			Enum.EasingDirection.Out
+		):Play()
+		Tween(Main, 0.55, { Position = UDim2.new(2, 0, 1, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+
+		task.delay(0.45, function()
+			if MainContainer then
+				MainContainer:Destroy()
+			end
+			if Notification.Queued and NotificationModule.QueueActive == Notification then
+				NotificationModule.QueueActive = nil
+				task.defer(StartNextQueued)
+			end
+		end)
+	end
+
+	task.spawn(function()
+		task.wait()
+		if Notification.Closed then
+			return
+		end
+		Tween(
+			MainContainer,
+			0.45,
+			{ Size = UDim2.new(1, 0, 0, Main.AbsoluteSize.Y) },
+			Enum.EasingStyle.Quint,
+			Enum.EasingDirection.Out
+		):Play()
+		Tween(Main, 0.45, { Position = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+		Notification:_StartDurationTimer()
 	end)
 
 	if CloseButton then
@@ -313,8 +395,23 @@ function NotificationModule.New(Config)
 		end)
 	end
 
-	--Tween():Play()
 	return Notification
+end
+
+StartNextQueued = function()
+	if NotificationModule.QueueActive and not NotificationModule.QueueActive.Closed then
+		return
+	end
+
+	while #NotificationModule.Queue > 0 do
+		local Entry = table.remove(NotificationModule.Queue, 1)
+		if Entry and not Entry.Cancelled then
+			local Config = Entry.Config
+			local Notification = NotificationModule.New(Config, true)
+			NotificationModule.QueueActive = Notification
+			return Notification
+		end
+	end
 end
 
 return NotificationModule

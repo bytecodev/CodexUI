@@ -1414,3 +1414,71 @@ dropdownA = Tabs.ExampleTab:Dropdown({
 	Value = { "All" },
 	Callback = function(option) end,
 })
+
+--[[
+CodexUI native API additions (v1.7.0+)
+
+-- #2 Native Config System + #5 GetElement by Id/Flag
+local Config = Window:Config({
+	File = "default",
+	AutoLoad = true,
+})
+
+local SavedToggle = Tabs.ExampleTab:Toggle({
+	Title = "Saved Toggle",
+	Flag = "saved_toggle",
+	Default = false,
+})
+
+print(Window:GetElement("saved_toggle"))
+Config:Save()
+Config:Load()
+
+-- #4 Native Cleanup / Track
+local connection = game:GetService("RunService").Heartbeat:Connect(function()
+	-- work
+end)
+Tabs.ExampleTab:Track(connection)
+Tabs.ExampleTab:OnCleanup(function()
+	-- stop custom loops / restore state here
+end)
+
+-- #8 Lazy Tab Rendering
+local LazyTab = Window:Tab({
+	Title = "Lazy Example",
+	Icon = "solar:bolt-bold",
+	Lazy = true,
+	Build = function(Tab)
+		Tab:Toggle({
+			Title = "Built only when opened",
+			Flag = "lazy_toggle",
+			Default = false,
+		})
+	end,
+})
+
+-- #11 Notification Id + Replace / Queue
+CodexUI:Notify({
+	Id = "download-progress",
+	Title = "Download",
+	Content = "25%",
+	Replace = true,
+})
+CodexUI:Notify({
+	Id = "download-progress",
+	Title = "Download",
+	Content = "50%",
+	Replace = true,
+})
+CodexUI:Notify({
+	Title = "Queued notification",
+	Content = "This waits for the previous queued notification.",
+	Queue = true,
+})
+
+-- #14 Runtime Theme Editing
+CodexUI:EditTheme("Dark", {
+	Accent = Color3.fromHex("#5583c9"),
+	Placeholder = Color3.fromHex("#e0e0e0"),
+})
+]]

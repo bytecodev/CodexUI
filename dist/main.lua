@@ -1,7 +1,7 @@
 --[[
     CodexUI
 
-    v1.6.66  |  CodexUI Roblox UI library for scripts
+    v1.7.0  |  CodexUI Roblox UI library for scripts
 
     Maintained by CodexAlpha
     Repository: https://github.com/bytecodev/CodexUI
@@ -26715,7 +26715,7 @@ New=a.load'p'.New
 return[[
 {
     "name": "codexui",
-    "version": "1.6.66",
+    "version": "1.7.0",
     "main": "./dist/main.lua",
     "repository": "https://github.com/bytecodev/CodexUI",
     "discord": "https://discord.gg/KxYmkDVEg3",
@@ -40028,6 +40028,723 @@ end
 
 
 return h
+end
+
+-- CodexUI v1.7.0 runtime compatibility layer.
+-- Keeps the bundled v1.6.x API backward-compatible while exposing the
+-- v1.7.0 native APIs implemented in src/.
+do
+    local CodexUI = aa
+
+    if not CodexUI.__CodexUI_v1_7_0 then
+        CodexUI.__CodexUI_v1_7_0 = true
+
+        local HttpService = game:GetService("HttpService")
+
+        local function shallowCopy(Value)
+            local Result = {}
+            if typeof(Value) == "table" then
+                for Key, Item in next, Value do
+                    Result[Key] = Item
+                end
+            end
+            return Result
+        end
+
+        local function cleanupResource(Resource, CustomCleanup)
+            if Resource == nil then
+                return
+            end
+
+            local Ok, Err = pcall(function()
+                if typeof(CustomCleanup) == "function" then
+                    CustomCleanup(Resource)
+                elseif typeof(Resource) == "RBXScriptConnection" then
+                    Resource:Disconnect()
+                elseif typeof(Resource) == "Instance" then
+                    Resource:Destroy()
+                elseif type(Resource) == "thread" then
+                    task.cancel(Resource)
+                elseif typeof(Resource) == "function" then
+                    Resource()
+                elseif typeof(Resource) == "table" then
+                    if typeof(Resource.Destroy) == "function" then
+                        Resource:Destroy()
+                    elseif typeof(Resource.Disconnect) == "function" then
+                        Resource:Disconnect()
+                    elseif typeof(Resource.Cancel) == "function" then
+                        Resource:Cancel()
+                    elseif typeof(Resource.Close) == "function" then
+                        Resource:Close()
+                    end
+                end
+            end)
+
+            if not Ok then
+                warn("[ CodexUI ] Cleanup failed: " .. tostring(Err))
+            end
+        end
+
+        -- #14 Runtime theme editing
+        function CodexUI:EditTheme(Name, Changes)
+            if typeof(Name) == "table" and Changes == nil then
+                Changes = Name
+                Name = self.Theme and self.Theme.Name
+            end
+
+            if typeof(Name) ~= "string" or typeof(Changes) ~= "table" then
+                return nil
+            end
+
+            local Theme = self.Themes and self.Themes[Name]
+            if not Theme then
+                return nil
+            end
+
+            for Key, Value in next, Changes do
+                if Key ~= "Name" then
+                    Theme[Key] = Value
+                end
+            end
+
+            if self.Theme == Theme or (self.Theme and self.Theme.Name == Name) then
+                self.Theme = Theme
+                if self.Creator and self.Creator.SetTheme then
+                    self.Creator.SetTheme(Theme)
+                end
+                if self.OnThemeChangeFunction then
+                    self.OnThemeChangeFunction(Name)
+                end
+            end
+
+            return Theme
+        end
+
+        -- #11 Notification Id + Replace + Queue
+        do
+            local OriginalNotify = CodexUI.Notify
+            local State = {
+                ById = {},
+                Queue = {},
+                ActiveQueued = nil,
+            }
+
+            local showNextQueued
+
+            local function wrapNotification(Notification, Id, IsQueued)
+                if typeof(Notification) ~= "table" or Notification.__CodexUIWrappedClose then
+                    return Notification
+                end
+
+                Notification.__CodexUIWrappedClose = true
+                Notification.Id = Id or Notification.Id
+                local OriginalClose = Notification.Close
+
+                if typeof(OriginalClose) == "function" then
+                    function Notification:Close(...)
+                        if self.__CodexUIClosed then
+                            return
+                        end
+                        self.__CodexUIClosed = true
+
+                        if Id and State.ById[Id] == self then
+                            State.ById[Id] = nil
+                        end
+
+                        local WasActiveQueue = IsQueued and State.ActiveQueued == self
+                        local Results = { OriginalClose(self, ...) }
+
+                        if WasActiveQueue then
+                            State.ActiveQueued = nil
+                            task.defer(showNextQueued)
+                        end
+
+                        return table.unpack(Results)
+                    end
+                end
+
+                return Notification
+            end
+
+            local function show(Config, IsQueued)
+                local Copy = shallowCopy(Config)
+                Copy.Queue = nil
+                local Id = Copy.Id ~= nil and tostring(Copy.Id) or nil
+                local Notification = OriginalNotify(CodexUI, Copy)
+
+                if typeof(Notification) == "table" then
+                    wrapNotification(Notification, Id, IsQueued)
+                    if Id then
+                        State.ById[Id] = Notification
+                    end
+                    if IsQueued then
+                        State.ActiveQueued = Notification
+                    end
+                end
+
+                return Notification
+            end
+
+            showNextQueued = function()
+                if State.ActiveQueued and not State.ActiveQueued.__CodexUIClosed then
+                    return
+                end
+
+                while #State.Queue > 0 do
+                    local Entry = table.remove(State.Queue, 1)
+                    if Entry and not Entry.Cancelled then
+                        return show(Entry.Config, true)
+                    end
+                end
+            end
+
+            function CodexUI:Notify(Config)
+                Config = Config or {}
+                local Id = Config.Id ~= nil and tostring(Config.Id) or nil
+
+                if Id and Config.Replace == true then
+                    local Existing = State.ById[Id]
+                    if Existing and not Existing.__CodexUIClosed and typeof(Existing.Close) == "function" then
+                        Existing:Close()
+                    end
+                end
+
+                if Config.Queue == true and State.ActiveQueued and not State.ActiveQueued.__CodexUIClosed then
+                    local Entry = {
+                        Config = shallowCopy(Config),
+                        Cancelled = false,
+                        Queued = true,
+                        Id = Id,
+                    }
+
+                    function Entry:Close()
+                        self.Cancelled = true
+                    end
+
+                    table.insert(State.Queue, Entry)
+                    return Entry
+                end
+
+                return show(Config, Config.Queue == true)
+            end
+        end
+
+        -- #5 / #4 / #2 / #8 are window-scoped APIs.
+        do
+            local OriginalCreateWindow = CodexUI.CreateWindow
+            local ElementMethods = {
+                "Paragraph",
+                "Button",
+                "Toggle",
+                "Slider",
+                "ProgressBar",
+                "Keybind",
+                "Input",
+                "Dropdown",
+                "Code",
+                "Colorpicker",
+                "Section",
+                "Divider",
+                "Space",
+                "Image",
+                "Group",
+                "HStack",
+                "VStack",
+                "Viewport",
+            }
+
+            local function patchWindow(Window)
+                if typeof(Window) ~= "table" or Window.__CodexUI_v1_7_0 then
+                    return Window
+                end
+
+                Window.__CodexUI_v1_7_0 = true
+                Window.ElementRegistry = Window.ElementRegistry or {}
+                Window.PendingConfigData = Window.PendingConfigData or {}
+                Window.TrackedResources = Window.TrackedResources or {}
+
+                local function registerElement(Element, Config)
+                    if typeof(Element) ~= "table" then
+                        return Element
+                    end
+
+                    Config = Config or {}
+                    local Id = Config.Id or Config.ID
+                    local Flag = Config.Flag
+
+                    Element.Id = Id or Element.Id
+                    Element.Flag = Flag or Element.Flag
+
+                    local function Register(Key)
+                        if Key == nil then
+                            return
+                        end
+                        Key = tostring(Key)
+                        if Key ~= "" then
+                            Window.ElementRegistry[Key] = Element
+                        end
+                    end
+
+                    Register(Id)
+                    Register(Flag)
+
+                    if not Element.__CodexUIRegistryDestroyPatched and typeof(Element.Destroy) == "function" then
+                        Element.__CodexUIRegistryDestroyPatched = true
+                        local OriginalDestroy = Element.Destroy
+                        function Element:Destroy(...)
+                            local IdKey = self.Id ~= nil and tostring(self.Id) or nil
+                            local FlagKey = self.Flag ~= nil and tostring(self.Flag) or nil
+
+                            if IdKey and Window.ElementRegistry[IdKey] == self then
+                                Window.ElementRegistry[IdKey] = nil
+                            end
+                            if FlagKey and Window.ElementRegistry[FlagKey] == self then
+                                Window.ElementRegistry[FlagKey] = nil
+                            end
+
+                            if FlagKey and Window.CurrentConfig then
+                                if typeof(Window.CurrentConfig.Unregister) == "function" then
+                                    Window.CurrentConfig:Unregister(FlagKey, self)
+                                elseif Window.CurrentConfig.Elements and Window.CurrentConfig.Elements[FlagKey] == self then
+                                    Window.CurrentConfig.Elements[FlagKey] = nil
+                                end
+                            end
+
+                            if FlagKey and Window.PendingFlags and Window.PendingFlags[FlagKey] == self then
+                                Window.PendingFlags[FlagKey] = nil
+                            end
+
+                            return OriginalDestroy(self, ...)
+                        end
+                    end
+
+                    return Element
+                end
+
+                local patchContainer
+                patchContainer = function(Container)
+                    if typeof(Container) ~= "table" or Container.__CodexUIElementMethodsPatched then
+                        return Container
+                    end
+
+                    Container.__CodexUIElementMethodsPatched = true
+
+                    for _, MethodName in ipairs(ElementMethods) do
+                        local Original = Container[MethodName]
+                        if typeof(Original) == "function" then
+                            Container[MethodName] = function(Self, Config, ...)
+                                Config = Config or {}
+                                local Element = Original(Self, Config, ...)
+                                registerElement(Element, Config)
+
+                                if typeof(Element) == "table" and typeof(Element.Elements) == "table" then
+                                    patchContainer(Element)
+                                end
+
+                                return Element
+                            end
+                        end
+                    end
+
+                    return Container
+                end
+
+                function Window:GetElement(Id)
+                    if Id == nil then
+                        return nil
+                    end
+                    return self.ElementRegistry[tostring(Id)]
+                end
+
+                function Window:Track(Resource, Cleanup)
+                    if Resource == nil then
+                        return nil
+                    end
+
+                    table.insert(self.TrackedResources, {
+                        Resource = Resource,
+                        Cleanup = Cleanup,
+                    })
+                    return Resource
+                end
+
+                function Window:OnCleanup(Callback)
+                    return self:Track(Callback)
+                end
+
+                function Window:Cleanup()
+                    for Index = #self.TrackedResources, 1, -1 do
+                        local Entry = table.remove(self.TrackedResources, Index)
+                        if Entry then
+                            cleanupResource(Entry.Resource, Entry.Cleanup)
+                        end
+                    end
+                    return self
+                end
+
+                local function patchConfigModule(ConfigModule)
+                    if typeof(ConfigModule) ~= "table" or ConfigModule.__CodexUI_v1_7_0 then
+                        return ConfigModule
+                    end
+
+                    ConfigModule.__CodexUI_v1_7_0 = true
+                    ConfigModule.Version = 2
+                    ConfigModule.Elements = ConfigModule.Elements or {}
+
+                    function ConfigModule:Unregister(Name, Element)
+                        if self.Elements[Name] == Element or Element == nil then
+                            self.Elements[Name] = nil
+                        end
+                    end
+
+                    local OriginalLoad = ConfigModule.Load
+                    if typeof(OriginalLoad) == "function" then
+                        function ConfigModule:Load(...)
+                            local Result, Error = OriginalLoad(self, ...)
+
+                            if readfile and (not isfile or isfile(self.Path)) then
+                                local Ok, Stored = pcall(function()
+                                    return HttpService:JSONDecode(readfile(self.Path))
+                                end)
+
+                                if Ok and typeof(Stored) == "table" then
+                                    local ElementsData = Stored.__version and (Stored.__elements or {}) or Stored
+                                    self.CustomData = Stored.__custom or self.CustomData or {}
+                                    if Stored.__autoload ~= nil then
+                                        self.AutoLoad = Stored.__autoload == true
+                                    end
+
+                                    for Name, Data in next, ElementsData do
+                                        if self.Elements[Name] then
+                                            Window.PendingConfigData[Name] = nil
+                                        elseif typeof(Data) == "table" and Window.ConfigManager and Window.ConfigManager.Parser and Window.ConfigManager.Parser[Data.__type] then
+                                            Window.PendingConfigData[Name] = Data
+                                        end
+                                    end
+                                end
+                            end
+
+                            return Result, Error
+                        end
+                    end
+
+                    local OriginalSave = ConfigModule.Save
+                    if typeof(OriginalSave) == "function" then
+                        function ConfigModule:Save(...)
+                            local Data, Error = OriginalSave(self, ...)
+                            if typeof(Data) ~= "table" then
+                                return Data, Error
+                            end
+
+                            Data.__version = 2
+                            Data.__elements = Data.__elements or {}
+                            Data.__autoload = self.AutoLoad == true
+                            Data.__custom = self.CustomData or {}
+
+                            for Flag, Pending in next, Window.PendingConfigData do
+                                if Data.__elements[Flag] == nil then
+                                    Data.__elements[Flag] = Pending
+                                end
+                            end
+
+                            if writefile then
+                                local Ok, WriteError = pcall(function()
+                                    writefile(self.Path, HttpService:JSONEncode(Data))
+                                end)
+                                if not Ok then
+                                    return false, tostring(WriteError)
+                                end
+                            end
+
+                            return Data
+                        end
+                    end
+
+                    function ConfigModule:SetAutoLoad(Value)
+                        self.AutoLoad = Value == true
+                        return self
+                    end
+
+                    return ConfigModule
+                end
+
+                function Window:Config(Options, AutoLoad)
+                    if not self.ConfigManager then
+                        return false, "Config system is unavailable. Set Window.Folder and use an executor with file APIs."
+                    end
+
+                    local FileName = "default"
+                    local ShouldAutoLoad = AutoLoad == true
+
+                    if typeof(Options) == "table" then
+                        FileName = Options.File or Options.Name or Options.Config or FileName
+                        ShouldAutoLoad = Options.AutoLoad == true
+                        if Options.Path and self.ConfigManager.SetPath then
+                            self.ConfigManager:SetPath(Options.Path)
+                        end
+                    elseif Options ~= nil then
+                        FileName = Options
+                    end
+
+                    FileName = tostring(FileName)
+                    local ConfigModule, Error = self.ConfigManager:CreateConfig(FileName, ShouldAutoLoad)
+                    if not ConfigModule then
+                        return ConfigModule, Error
+                    end
+
+                    patchConfigModule(ConfigModule)
+
+                    if self.PendingFlags then
+                        for Flag, Element in next, self.PendingFlags do
+                            ConfigModule:Register(Flag, Element)
+                        end
+                    end
+
+                    if ShouldAutoLoad and readfile and (not isfile or isfile(ConfigModule.Path)) then
+                        task.defer(function()
+                            if self.CurrentConfig == ConfigModule then
+                                local Ok, LoadError = pcall(function()
+                                    ConfigModule:Load()
+                                end)
+                                if not Ok and self.Debug then
+                                    warn("[ CodexUI.ConfigManager ] AutoLoad failed: " .. tostring(LoadError))
+                                end
+                            end
+                        end)
+                    end
+
+                    return ConfigModule
+                end
+
+                local function patchTab(Tab, BuildFunction, Lazy)
+                    if typeof(Tab) ~= "table" then
+                        return Tab
+                    end
+
+                    patchContainer(Tab)
+
+                    if not Tab.__CodexUI_v1_7_0 then
+                        Tab.__CodexUI_v1_7_0 = true
+                        Tab.TrackedResources = Tab.TrackedResources or {}
+                        Tab.BuildFunction = BuildFunction
+                        Tab.Lazy = Lazy == true and typeof(BuildFunction) == "function"
+                        Tab.Built = typeof(BuildFunction) ~= "function"
+                        Tab.Building = false
+
+                        function Tab:_EnsureBuilt()
+                            if self.Built or self.Building or typeof(self.BuildFunction) ~= "function" then
+                                return self
+                            end
+
+                            self.Building = true
+                            local Ok, Err = pcall(self.BuildFunction, self)
+                            self.Building = false
+
+                            if not Ok then
+                                warn("[ CodexUI ] Failed to build lazy tab '" .. tostring(self.Title) .. "': " .. tostring(Err))
+                                return self
+                            end
+
+                            self.Built = true
+                            return self
+                        end
+
+                        function Tab:Build()
+                            return self:_EnsureBuilt()
+                        end
+
+                        function Tab:Track(Resource, Cleanup)
+                            if Resource == nil then
+                                return nil
+                            end
+                            table.insert(self.TrackedResources, {
+                                Resource = Resource,
+                                Cleanup = Cleanup,
+                            })
+                            return Resource
+                        end
+
+                        function Tab:OnCleanup(Callback)
+                            return self:Track(Callback)
+                        end
+
+                        function Tab:Cleanup()
+                            for Index = #self.TrackedResources, 1, -1 do
+                                local Entry = table.remove(self.TrackedResources, Index)
+                                if Entry then
+                                    cleanupResource(Entry.Resource, Entry.Cleanup)
+                                end
+                            end
+                            return self
+                        end
+
+                        function Tab:GetElement(Id)
+                            local Element = Window:GetElement(Id)
+                            if Element and Element.Tab == self then
+                                return Element
+                            end
+                            return nil
+                        end
+
+                        if typeof(Tab.Destroy) ~= "function" then
+                            function Tab:Destroy()
+                                if self.Destroyed then
+                                    return
+                                end
+                                self.Destroyed = true
+                                self:Cleanup()
+
+                                if self.Elements then
+                                    for Index = #self.Elements, 1, -1 do
+                                        local Element = self.Elements[Index]
+                                        if Element and typeof(Element.Destroy) == "function" then
+                                            pcall(function()
+                                                Element:Destroy()
+                                            end)
+                                        end
+                                    end
+                                end
+
+                                if self.UIElements then
+                                    if self.UIElements.ContainerFrameCanvas then
+                                        self.UIElements.ContainerFrameCanvas:Destroy()
+                                    end
+                                    if self.UIElements.Main then
+                                        self.UIElements.Main:Destroy()
+                                    end
+                                end
+
+                                if Window.TabModule and self.Index then
+                                    Window.TabModule.Tabs[self.Index] = nil
+                                    Window.TabModule.Containers[self.Index] = nil
+
+                                    if Window.TabModule.SelectedTab == self.Index then
+                                        Window.TabModule.SelectedTab = nil
+                                        for Index, Candidate in next, Window.TabModule.Tabs do
+                                            if Candidate and not Candidate.Locked then
+                                                Window.TabModule:SelectTab(Index)
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    elseif BuildFunction and not Tab.BuildFunction then
+                        Tab.BuildFunction = BuildFunction
+                        Tab.Lazy = Lazy == true
+                        Tab.Built = false
+                    end
+
+                    if BuildFunction and not Lazy then
+                        Tab:_EnsureBuilt()
+                    end
+
+                    return Tab
+                end
+
+                local function patchSection(Section)
+                    if typeof(Section) ~= "table" or Section.__CodexUI_v1_7_0 then
+                        return Section
+                    end
+
+                    Section.__CodexUI_v1_7_0 = true
+                    Section.__CodexTabs = Section.__CodexTabs or {}
+                    local OriginalTab = Section.Tab
+
+                    if typeof(OriginalTab) == "function" then
+                        function Section:Tab(Config)
+                            Config = Config or {}
+                            local BuildFunction = typeof(Config.Build) == "function" and Config.Build or nil
+                            local Lazy = Config.Lazy == true and BuildFunction ~= nil
+                            local Passed = shallowCopy(Config)
+                            Passed.Build = nil
+                            Passed.Lazy = nil
+
+                            local Tab = OriginalTab(self, Passed)
+                            patchTab(Tab, BuildFunction, Lazy)
+                            table.insert(self.__CodexTabs, Tab)
+                            return Tab
+                        end
+                    end
+
+                    function Section:GetElement(Id)
+                        local Element = Window:GetElement(Id)
+                        if not Element or not Element.Tab then
+                            return nil
+                        end
+
+                        for _, Tab in next, self.__CodexTabs do
+                            if Element.Tab == Tab then
+                                return Element
+                            end
+                        end
+                        return nil
+                    end
+
+                    return Section
+                end
+
+                local OriginalTab = Window.Tab
+                if typeof(OriginalTab) == "function" then
+                    function Window:Tab(Config)
+                        Config = Config or {}
+                        local BuildFunction = typeof(Config.Build) == "function" and Config.Build or nil
+                        local Lazy = Config.Lazy == true and BuildFunction ~= nil
+                        local Passed = shallowCopy(Config)
+                        Passed.Build = nil
+                        Passed.Lazy = nil
+
+                        local Tab = OriginalTab(self, Passed)
+                        return patchTab(Tab, BuildFunction, Lazy)
+                    end
+                end
+
+                local OriginalSection = Window.Section
+                if typeof(OriginalSection) == "function" then
+                    function Window:Section(Config)
+                        return patchSection(OriginalSection(self, Config or {}))
+                    end
+                end
+
+                if Window.TabModule and not Window.TabModule.__CodexUILazySelectPatched then
+                    Window.TabModule.__CodexUILazySelectPatched = true
+                    local OriginalSelectTab = Window.TabModule.SelectTab
+                    if typeof(OriginalSelectTab) == "function" then
+                        function Window.TabModule:SelectTab(Index)
+                            local Tab = self.Tabs and self.Tabs[Index]
+                            if Tab and typeof(Tab._EnsureBuilt) == "function" then
+                                Tab:_EnsureBuilt()
+                            end
+                            return OriginalSelectTab(self, Index)
+                        end
+                    end
+                end
+
+                local OriginalDestroy = Window.Destroy
+                if typeof(OriginalDestroy) == "function" then
+                    function Window:Destroy(...)
+                        if self.TabModule and self.TabModule.Tabs then
+                            for _, Tab in next, self.TabModule.Tabs do
+                                if Tab and typeof(Tab.Cleanup) == "function" then
+                                    Tab:Cleanup()
+                                end
+                            end
+                        end
+                        self:Cleanup()
+                        return OriginalDestroy(self, ...)
+                    end
+                end
+
+                return Window
+            end
+
+            function CodexUI:CreateWindow(Config)
+                local Window = OriginalCreateWindow(self, Config)
+                return patchWindow(Window)
+            end
+        end
+    end
 end
 
 return aa

@@ -171,9 +171,9 @@ math.clamp(CodexUI.TransparencyValue, 0, 1)
 local Holder = CodexUI.NotificationModule.Init(CodexUI.NotificationGui)
 
 function CodexUI:Notify(Config)
+	Config = Config or {}
 	Config.Holder = Holder.Frame
 	Config.Window = CodexUI.Window
-	--Config.CodexUI = CodexUI
 	return CodexUI.NotificationModule.New(Config)
 end
 
@@ -192,6 +192,39 @@ end
 function CodexUI:AddTheme(LTheme)
 	CodexUI.Themes[LTheme.Name] = LTheme
 	return LTheme
+end
+
+function CodexUI:EditTheme(Name, Changes)
+	if typeof(Name) == "table" and Changes == nil then
+		Changes = Name
+		Name = CodexUI.Theme and CodexUI.Theme.Name
+	end
+
+	if typeof(Name) ~= "string" or typeof(Changes) ~= "table" then
+		return nil
+	end
+
+	local Theme = CodexUI.Themes[Name]
+	if not Theme then
+		return nil
+	end
+
+	for Key, Value in next, Changes do
+		if Key ~= "Name" then
+			Theme[Key] = Value
+		end
+	end
+
+	if CodexUI.Theme == Theme or (CodexUI.Theme and CodexUI.Theme.Name == Name) then
+		CodexUI.Theme = Theme
+		Creator.SetTheme(Theme)
+
+		if CodexUI.OnThemeChangeFunction then
+			CodexUI.OnThemeChangeFunction(Name)
+		end
+	end
+
+	return Theme
 end
 
 function CodexUI:SetTheme(Value)

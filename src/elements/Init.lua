@@ -48,6 +48,28 @@ return {
 
 				local _elementInstance, content = module:New(config)
 
+				local elementId = config.Id or config.ID or config.Flag
+				content.Id = elementId
+				content.Flag = config.Flag
+
+				Window.ElementRegistry = Window.ElementRegistry or {}
+				local function RegisterElementKey(Key)
+					if Key ~= nil then
+						Key = tostring(Key)
+					end
+					if typeof(Key) == "string" and Key ~= "" then
+						if Window.ElementRegistry[Key] and Window.ElementRegistry[Key] ~= content and Window.Debug then
+							warn("[ CodexUI ] Element id/flag '" .. Key .. "' was replaced in the registry.")
+						end
+						Window.ElementRegistry[Key] = content
+					end
+				end
+
+				RegisterElementKey(elementId)
+				if config.Flag ~= elementId then
+					RegisterElementKey(config.Flag)
+				end
+
 				if config.Flag and typeof(config.Flag) == "string" then
 					if Window.CurrentConfig then
 						Window.CurrentConfig:Register(config.Flag, content)
@@ -108,6 +130,24 @@ return {
 					end
 					function content:Destroy()
 						frame:Destroy()
+
+						if Window.ElementRegistry then
+							local elementKey = elementId ~= nil and tostring(elementId) or nil
+							local flagKey = config.Flag ~= nil and tostring(config.Flag) or nil
+							if elementKey and Window.ElementRegistry[elementKey] == content then
+								Window.ElementRegistry[elementKey] = nil
+							end
+							if flagKey and Window.ElementRegistry[flagKey] == content then
+								Window.ElementRegistry[flagKey] = nil
+							end
+						end
+
+						if config.Flag and Window.CurrentConfig and Window.CurrentConfig.Unregister then
+							Window.CurrentConfig:Unregister(config.Flag, content)
+						end
+						if config.Flag and Window.PendingFlags and Window.PendingFlags[config.Flag] == content then
+							Window.PendingFlags[config.Flag] = nil
+						end
 
 						RemoveFromList(Window.AllElements, content)
 						local RemovedIndex = RemoveFromList(tbl.Elements, content)

@@ -15,3 +15,7 @@ CodexUI is the maintained CodexAlpha fork of the UI library used by Codex Alpha 
 CodexUI is a modified fork of MIT-licensed software originally copyrighted by Footages. The original MIT copyright and permission notice are preserved in `LICENSE`; do not remove them when redistributing substantial portions of the software.
 
 Repository branding, runtime names, storage folders, examples, package metadata, and maintained UI labels use **CodexUI** / **CodexAlpha**.
+
+## Native APIs added in v1.7.0
+
+CodexUI v1.7.0 adds flagged config persistence (`Window:Config`), element lookup (`Window:GetElement`), tracked cleanup (`Track` / `OnCleanup`), opt-in lazy tab building (`Lazy` + `Build`), notification `Id` / `Replace` / `Queue`, and runtime theme editing with `CodexUI:EditTheme`. Existing eager tab/element APIs remain supported. See `main.client.lua` for compact examples.

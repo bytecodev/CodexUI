@@ -205,18 +205,16 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
-		New("UICorner", {
-			Name = "OutlineCorner",
-			CornerRadius = UDim.new(0, Radius),
-		}),
-		New("UIStroke", {
+		Creator.NewRoundFrame(Radius, "Squircle-Outline", {
 			Name = "Outline",
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			Thickness = tonumber(Config.OutlineThickness) or 1,
-			Transparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			ImageTransparency = 1,
+			Active = false,
 			ThemeTag = {
-				Color = "Outline",
+				ImageColor3 = "Outline",
 			},
+			ZIndex = BaseZIndex + 2,
 		}),
 		New("UISizeConstraint", {
 			MinSize = Vector2.new(286, 0),
@@ -274,7 +272,7 @@ local function createSurface(Config, Kind)
 			Overlay.Active = false
 			Tween(Overlay, 0.14, { BackgroundTransparency = 1 }):Play()
 			Tween(Card, 0.1, { ImageTransparency = 1 }):Play()
-			Tween(Card.Outline, 0.1, { Transparency = 1 }):Play()
+			Tween(Card.Outline, 0.1, { ImageTransparency = 1 }):Play()
 			task.delay(0.15, Destroy)
 		end
 		Creator.SafeCallback(Config.OnClose, self)
@@ -289,7 +287,7 @@ local function createSurface(Config, Kind)
 		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.82),
 	}):Play()
 	Tween(Card, 0.1, { ImageTransparency = SurfaceTransparency }):Play()
-	Tween(Card.Outline, 0.1, { Transparency = OutlineTransparency }):Play()
+	Tween(Card.Outline, 0.1, { ImageTransparency = OutlineTransparency }):Play()
 
 	return Controller, Content, BaseZIndex
 end

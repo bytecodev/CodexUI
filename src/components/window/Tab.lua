@@ -15,6 +15,40 @@ local CreateScrollSlider = require("../ui/ScrollSlider").New
 
 local Window, CodexUI, UIScale
 
+local function CleanupResource(Resource, CustomCleanup)
+	if Resource == nil then
+		return
+	end
+
+	local ok, err = pcall(function()
+		if typeof(CustomCleanup) == "function" then
+			CustomCleanup(Resource)
+		elseif typeof(Resource) == "RBXScriptConnection" then
+			Resource:Disconnect()
+		elseif typeof(Resource) == "Instance" then
+			Resource:Destroy()
+		elseif type(Resource) == "thread" then
+			task.cancel(Resource)
+		elseif typeof(Resource) == "function" then
+			Resource()
+		elseif typeof(Resource) == "table" then
+			if typeof(Resource.Destroy) == "function" then
+				Resource:Destroy()
+			elseif typeof(Resource.Disconnect) == "function" then
+				Resource:Disconnect()
+			elseif typeof(Resource.Cancel) == "function" then
+				Resource:Cancel()
+			elseif typeof(Resource.Close) == "function" then
+				Resource:Close()
+			end
+		end
+	end)
+
+	if not ok then
+		warn("[ CodexUI ] Tab cleanup failed: " .. tostring(err))
+	end
+end
+
 local TabModule = {
 	--Window = nil,
 	--CodexUI = nil,
@@ -56,7 +90,12 @@ function TabModule.New(Config, UIScale)
 		Parent = Config.Parent,
 		UIElements = {},
 		Elements = {},
+		TrackedResources = {},
 		ContainerFrame = nil,
+		BuildFunction = typeof(Config.Build) == "function" and Config.Build or nil,
+		Lazy = Config.Lazy == true and typeof(Config.Build) == "function",
+		Built = typeof(Config.Build) ~= "function",
+		Building = false,
 		UICorner = Window.UICorner - (Window.UIPadding / 2),
 
 		Gap = Window.NewElements and 1 or 6,
@@ -65,6 +104,10 @@ function TabModule.New(Config, UIScale)
 		TabPaddingY = 3 + (Window.UIPadding / 2),
 		TitlePaddingY = 0,
 	}
+
+	if Config.Lazy == true and not Tab.BuildFunction and Window.Debug then
+		warn("[ CodexUI ] Lazy tab '" .. Tab.Title .. "' has no Build callback; falling back to eager API usage.")
+	end
 
 	-- if Tab.TabTitleAlign == "Left" then
 	-- 	Tab.TabTitleAlign = "Top"
@@ -464,6 +507,66 @@ function TabModule.New(Config, UIScale)
 		Tab
 	)
 
+	function Tab:_EnsureBuilt()
+		if Tab.Built or Tab.Building or not Tab.BuildFunction then
+			return Tab
+		end
+
+		Tab.Building = true
+		local ok, err = pcall(Tab.BuildFunction, Tab)
+		Tab.Building = false
+
+		if not ok then
+			warn("[ CodexUI ] Failed to build lazy tab '" .. Tab.Title .. "': " .. tostring(err))
+			return Tab
+		end
+
+		Tab.Built = true
+		return Tab
+	end
+
+	function Tab:Build()
+		return Tab:_EnsureBuilt()
+	end
+
+	function Tab:Track(Resource, Cleanup)
+		if Resource == nil then
+			return nil
+		end
+
+		table.insert(Tab.TrackedResources, {
+			Resource = Resource,
+			Cleanup = Cleanup,
+		})
+		return Resource
+	end
+
+	function Tab:OnCleanup(Callback)
+		return Tab:Track(Callback)
+	end
+
+	function Tab:Cleanup()
+		for Index = #Tab.TrackedResources, 1, -1 do
+			local Entry = table.remove(Tab.TrackedResources, Index)
+			if Entry then
+				CleanupResource(Entry.Resource, Entry.Cleanup)
+			end
+		end
+		return Tab
+	end
+
+	function Tab:GetElement(Id)
+		local Element = Window:GetElement(Id)
+		if Element and Element.Tab == Tab then
+			return Element
+		end
+		return nil
+	end
+
+	if Tab.BuildFunction and not Tab.Lazy then
+		Tab:_EnsureBuilt()
+	end
+
 	-- Native centered state container for tabs. This is useful for gated/empty
 	-- pages (for example, a Chat tab that should only show a Connect button
 	-- until a session is ready) without scripts manually parenting Instances
@@ -632,6 +735,43 @@ function TabModule.New(Config, UIScale)
 		return UnlockedElements
 	end
 
+	function Tab:Destroy()
+		if Tab.Destroyed then
+			return
+		end
+		Tab.Destroyed = true
+		Tab:Cleanup()
+
+		for Index = #Tab.Elements, 1, -1 do
+			local Element = Tab.Elements[Index]
+			if Element and Element.Destroy then
+				pcall(function()
+					Element:Destroy()
+				end)
+			end
+		end
+
+		if Tab.UIElements.ContainerFrameCanvas then
+			Tab.UIElements.ContainerFrameCanvas:Destroy()
+		end
+		if Tab.UIElements.Main then
+			Tab.UIElements.Main:Destroy()
+		end
+
+		TabModule.Tabs[Tab.Index] = nil
+		TabModule.Containers[Tab.Index] = nil
+
+		if TabModule.SelectedTab == Tab.Index then
+			TabModule.SelectedTab = nil
+			for Index, Candidate in next, TabModule.Tabs do
+				if Candidate and not Candidate.Locked then
+					TabModule:SelectTab(Index)
+					break
+				end
+			end
+		end
+	end
+
 	function Tab:Select()
 		return TabModule:SelectTab(Tab.Index)
 	end
@@ -712,7 +852,13 @@ function TabModule:OnChange(func)
 end
 
 function TabModule:SelectTab(TabIndex)
-	if not TabModule.Tabs[TabIndex].Locked then
+	local SelectedTab = TabModule.Tabs[TabIndex]
+	if not SelectedTab then
+		return nil
+	end
+
+	if not SelectedTab.Locked then
+		SelectedTab:_EnsureBuilt()
 		TabModule.SelectedTab = TabIndex
 
 		for _, TabObject in next, TabModule.Tabs do

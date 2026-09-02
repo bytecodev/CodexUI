@@ -3,7 +3,7 @@
 return [[
 {
     "name": "codexui",
-    "version": "1.6.66",
+    "version": "1.7.0",
     "main": "./dist/main.lua",
     "repository": "https://github.com/bytecodev/CodexUI",
     "discord": "https://discord.gg/KxYmkDVEg3",

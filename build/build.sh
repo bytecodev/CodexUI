@@ -18,14 +18,15 @@ R='\033[0m'
 
 if [ "$MODE" = "dev" ]; then
     INPUT=${2:-"./main.client.lua"}
+    CONFIG="build/darklua.dev.config.json"
     PREFIX="${D}[ DEV ]${R}"
 else
     INPUT="src/Init.lua"
+    CONFIG="build/darklua.config.json"
     PREFIX="${B}[ BUILD ]${R}"
 fi
 
 OUTPUT="dist/main.lua"
-CONFIG="build/darklua.dev.config.json"
 
 PKG=$(node -e "const p=require('./package.json');console.log(JSON.stringify({v:p.version||'',d:p.description||'',r:p.repository||'',s:p.discord||'',l:p.license||''}))")
 

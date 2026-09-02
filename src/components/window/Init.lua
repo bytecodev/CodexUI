@@ -26,6 +26,40 @@ local ConfigManager = require("../../config/Init")
 
 local Notified = false
 
+local function CleanupResource(Resource, CustomCleanup)
+	if Resource == nil then
+		return
+	end
+
+	local ok, err = pcall(function()
+		if typeof(CustomCleanup) == "function" then
+			CustomCleanup(Resource)
+		elseif typeof(Resource) == "RBXScriptConnection" then
+			Resource:Disconnect()
+		elseif typeof(Resource) == "Instance" then
+			Resource:Destroy()
+		elseif type(Resource) == "thread" then
+			task.cancel(Resource)
+		elseif typeof(Resource) == "function" then
+			Resource()
+		elseif typeof(Resource) == "table" then
+			if typeof(Resource.Destroy) == "function" then
+				Resource:Destroy()
+			elseif typeof(Resource.Disconnect) == "function" then
+				Resource:Disconnect()
+			elseif typeof(Resource.Cancel) == "function" then
+				Resource:Cancel()
+			elseif typeof(Resource.Close) == "function" then
+				Resource:Close()
+			end
+		end
+	end)
+
+	if not ok then
+		warn("[ CodexUI ] Cleanup failed: " .. tostring(err))
+	end
+end
+
 return function(Config)
 	local Window = {
 		Title = Config.Title or "UI Library",
@@ -93,10 +127,13 @@ return function(Config)
 
 		TopBarButtons = {},
 		AllElements = {},
+		ElementRegistry = {},
 
 		ElementConfig = {},
 
 		PendingFlags = {},
+		PendingConfigData = {},
+		TrackedResources = {},
 
 		IsToggleDragging = false,
 	}
@@ -1300,6 +1337,32 @@ return function(Config)
 		Window.OnDestroyCallback = func
 	end
 
+	function Window:Track(Resource, Cleanup)
+		if Resource == nil then
+			return nil
+		end
+
+		table.insert(Window.TrackedResources, {
+			Resource = Resource,
+			Cleanup = Cleanup,
+		})
+		return Resource
+	end
+
+	function Window:OnCleanup(Callback)
+		return Window:Track(Callback)
+	end
+
+	function Window:Cleanup()
+		for Index = #Window.TrackedResources, 1, -1 do
+			local Entry = table.remove(Window.TrackedResources, Index)
+			if Entry then
+				CleanupResource(Entry.Resource, Entry.Cleanup)
+			end
+		end
+		return Window
+	end
+
 	if Config.CodexUI.UseAcrylic then
 		Window.AcrylicPaint.AddParent(Window.UIElements.Main)
 	end
@@ -1507,6 +1570,15 @@ return function(Config)
 
 		function Close:Destroy()
 			task.spawn(function()
+				if Window.TabModule and Window.TabModule.Tabs then
+					for _, Tab in next, Window.TabModule.Tabs do
+						if Tab and Tab.Cleanup then
+							Tab:Cleanup()
+						end
+					end
+				end
+				Window:Cleanup()
+
 				if Window.OnDestroyCallback then
 					task.spawn(function()
 						Creator.SafeCallback(Window.OnDestroyCallback)
@@ -1525,6 +1597,12 @@ return function(Config)
 				Config.CodexUI.NotificationGui:Destroy()
 				Config.CodexUI.DropdownGui:Destroy()
 				Config.CodexUI.TooltipGui:Destroy()
+				if Config.CodexUI.CloseAllStandalone then
+					Config.CodexUI:CloseAllStandalone(true)
+				end
+				if Config.CodexUI.StandaloneGui then
+					Config.CodexUI.StandaloneGui:Destroy()
+				end
 
 				Creator.DisconnectAll()
 
@@ -1615,6 +1693,42 @@ return function(Config)
 
 	function Window:SetCurrentConfig(ConfigModule)
 		Window.CurrentConfig = ConfigModule
+
+		if ConfigModule and Window.PendingFlags then
+			for Flag, Element in next, Window.PendingFlags do
+				ConfigModule:Register(Flag, Element)
+			end
+		end
+
+		return ConfigModule
+	end
+
+	function Window:GetElement(Id)
+		if Id == nil then
+			return nil
+		end
+		return Window.ElementRegistry[tostring(Id)]
+	end
+
+	function Window:Config(ConfigOptions, AutoLoad)
+		if not Window.ConfigManager then
+			return false, "Config system is unavailable. Set Window.Folder and use an executor with file APIs."
+		end
+
+		local FileName
+		local ShouldAutoLoad = AutoLoad == true
+
+		if typeof(ConfigOptions) == "table" then
+			FileName = ConfigOptions.File or ConfigOptions.Name or ConfigOptions.Config or "default"
+			ShouldAutoLoad = ConfigOptions.AutoLoad == true
+			if ConfigOptions.Path then
+				Window.ConfigManager:SetPath(ConfigOptions.Path)
+			end
+		else
+			FileName = ConfigOptions or "default"
+		end
+
+		return Window.ConfigManager:CreateConfig(FileName, ShouldAutoLoad)
 	end
 
 	do

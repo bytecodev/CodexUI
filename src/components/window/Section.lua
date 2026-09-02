@@ -20,6 +20,7 @@ function Section.New(SectionConfig, Parent, Folder, UIScale, Window)
         ChevronSize = 18,
         
         Expandable = false,
+        Tabs = {},
     }
     
     local IconFrame
@@ -126,7 +127,23 @@ function Section.New(SectionConfig, Parent, Folder, UIScale, Window)
             ChevronIconFrame.Visible = true
         end
         TabConfig.Parent = SectionFrame.Content
-        return TabModule.New(TabConfig, UIScale)
+        local Tab = TabModule.New(TabConfig, UIScale)
+        table.insert(SectionModule.Tabs, Tab)
+        return Tab
+    end
+
+    function SectionModule:GetElement(Id)
+        local Element = Window:GetElement(Id)
+        if not Element or not Element.Tab then
+            return nil
+        end
+
+        for _, Tab in next, SectionModule.Tabs do
+            if Element.Tab == Tab then
+                return Element
+            end
+        end
+        return nil
     end
     
     function SectionModule:Open()

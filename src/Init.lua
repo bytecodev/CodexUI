@@ -4,6 +4,7 @@ local CodexUI = {
 	Creator = require("./modules/Creator"),
 	LocalizationModule = require("./modules/Localization"),
 	NotificationModule = require("./components/Notification"),
+	StandaloneModule = require("./components/Standalone"),
 	Themes = nil,
 	Transparent = false,
 
@@ -145,10 +146,18 @@ CodexUI.TooltipGui = New("ScreenGui", {
 	Parent = GUIParent,
 	IgnoreGuiInset = true,
 })
+CodexUI.StandaloneGui = New("ScreenGui", {
+	Name = "CodexUI/Standalone",
+	Parent = GUIParent,
+	IgnoreGuiInset = true,
+	ScreenInsets = "None",
+	DisplayOrder = 999999,
+})
 ProtectGui(CodexUI.ScreenGui)
 ProtectGui(CodexUI.NotificationGui)
 ProtectGui(CodexUI.DropdownGui)
 ProtectGui(CodexUI.TooltipGui)
+ProtectGui(CodexUI.StandaloneGui)
 
 Creator.Init(CodexUI)
 
@@ -165,20 +174,48 @@ function CodexUI:SetParent(parent)
 	if CodexUI.TooltipGui then
 		CodexUI.TooltipGui.Parent = parent
 	end
+	if CodexUI.StandaloneGui then
+		CodexUI.StandaloneGui.Parent = parent
+	end
 end
 math.clamp(CodexUI.TransparencyValue, 0, 1)
 
 local Holder = CodexUI.NotificationModule.Init(CodexUI.NotificationGui)
+local Standalone = CodexUI.StandaloneModule.Init(CodexUI, CodexUI.StandaloneGui)
 
 function CodexUI:Notify(Config)
-	Config = Config or {}
 	Config.Holder = Holder.Frame
 	Config.Window = CodexUI.Window
+	--Config.CodexUI = CodexUI
 	return CodexUI.NotificationModule.New(Config)
 end
 
 function CodexUI:SetNotificationLower(Val)
 	Holder.SetLower(Val)
+end
+
+function CodexUI:Loading(Config)
+	return Standalone:Loading(Config)
+end
+
+function CodexUI:Info(Config)
+	return Standalone:Info(Config)
+end
+
+function CodexUI:Announcement(Config)
+	return Standalone:Announcement(Config)
+end
+
+function CodexUI:Limit(Config)
+	return Standalone:Limit(Config)
+end
+
+function CodexUI:CloseStandalone(Id)
+	return Standalone:Close(Id)
+end
+
+function CodexUI:CloseAllStandalone(Immediate)
+	return Standalone:CloseAll(Immediate)
 end
 
 function CodexUI:SetFont(FontId)
@@ -199,31 +236,25 @@ function CodexUI:EditTheme(Name, Changes)
 		Changes = Name
 		Name = CodexUI.Theme and CodexUI.Theme.Name
 	end
-
 	if typeof(Name) ~= "string" or typeof(Changes) ~= "table" then
 		return nil
 	end
-
-	local Theme = CodexUI.Themes[Name]
+	local Theme = CodexUI.Themes and CodexUI.Themes[Name]
 	if not Theme then
 		return nil
 	end
-
-	for Key, Value in next, Changes do
+	for Key, Value in pairs(Changes) do
 		if Key ~= "Name" then
 			Theme[Key] = Value
 		end
 	end
-
 	if CodexUI.Theme == Theme or (CodexUI.Theme and CodexUI.Theme.Name == Name) then
 		CodexUI.Theme = Theme
 		Creator.SetTheme(Theme)
-
 		if CodexUI.OnThemeChangeFunction then
 			CodexUI.OnThemeChangeFunction(Name)
 		end
 	end
-
 	return Theme
 end
 

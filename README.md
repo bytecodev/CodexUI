@@ -19,3 +19,36 @@ Repository branding, runtime names, storage folders, examples, package metadata,
 ## Native APIs added in v1.7.0
 
 CodexUI v1.7.0 adds flagged config persistence (`Window:Config`), element lookup (`Window:GetElement`), tracked cleanup (`Track` / `OnCleanup`), opt-in lazy tab building (`Lazy` + `Build`), notification `Id` / `Replace` / `Queue`, and runtime theme editing with `CodexUI:EditTheme`. Existing eager tab/element APIs remain supported. See `main.client.lua` for compact examples.
+
+## Standalone UI (no window required)
+
+Standalone surfaces can be shown immediately after loading CodexUI. They do not require `CodexUI:CreateWindow()`.
+
+```lua
+local Loading = CodexUI:Loading({
+	Id = "loader",
+	Title = "ByteCode Loader",
+	Status = "Validating access...",
+	Progress = 0,
+})
+
+Loading:SetProgress(0.5, "Downloading source...")
+Loading:SetStep(3, 4, "Starting script...")
+Loading:Complete("Ready!")
+
+CodexUI:Announcement({
+	Author = "System",
+	Message = "A new version is available.",
+})
+
+CodexUI:Limit({
+	Title = "Usage limits",
+	Daily = { Used = 8, Limit = 10 },
+	Weekly = { Used = 42, Limit = 50 },
+	Buttons = {
+		{ Title = "Close", Primary = false },
+	},
+})
+```
+
+`CodexUI:Info()` is the generic standalone information surface. Loading and information controllers support `Close()` / `Destroy()`, and matching `Id` values replace older surfaces by default.

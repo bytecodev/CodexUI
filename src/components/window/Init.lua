@@ -1597,6 +1597,12 @@ return function(Config)
 				Config.CodexUI.NotificationGui:Destroy()
 				Config.CodexUI.DropdownGui:Destroy()
 				Config.CodexUI.TooltipGui:Destroy()
+				if Config.CodexUI.CloseAllStandalone then
+					Config.CodexUI:CloseAllStandalone(true)
+				end
+				if Config.CodexUI.StandaloneGui then
+					Config.CodexUI.StandaloneGui:Destroy()
+				end
 
 				Creator.DisconnectAll()
 

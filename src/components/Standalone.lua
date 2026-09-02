@@ -2,6 +2,7 @@ local Creator = require("../modules/Creator")
 
 local New = Creator.New
 local Tween = Creator.Tween
+local CreateButton = require("./ui/Button").New
 local RunService = game:GetService("RunService")
 
 local Standalone = {
@@ -109,40 +110,27 @@ end
 
 local function createButton(Config, Parent, Controller)
 	Config = Config or {}
-	local Button = New("TextButton", {
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.new(0, 0, 0, 38),
-		BackgroundTransparency = 0,
-		Text = tostring(Config.Title or Config.Text or "Okay"),
-		TextSize = 15,
-		FontFace = Font.new(Creator.Font, Enum.FontWeight.SemiBold),
-		ThemeTag = Config.Color and {
-			TextColor3 = "White",
-		} or {
-			BackgroundColor3 = Config.Primary == false and "ElementBackground" or "Primary",
-			TextColor3 = Config.Primary == false and "Text" or "White",
-		},
-		Parent = Parent,
-	}, {
-		New("UICorner", {
-			CornerRadius = UDim.new(0, 10),
-		}),
-		New("UIPadding", {
-			PaddingLeft = UDim.new(0, 16),
-			PaddingRight = UDim.new(0, 16),
-		}),
-	})
+	local Variant = Config.Variant or (Config.Primary == false and "Secondary" or "Primary")
+	local Button = CreateButton(
+		tostring(Config.Title or Config.Text or "Okay"),
+		Config.Icon,
+		function()
+			if Config.Close ~= false then
+				Controller:Close()
+			end
+			Creator.SafeCallback(Config.Callback, Controller)
+		end,
+		Variant,
+		Parent,
+		nil,
+		Config.FullRounded,
+		Config.Radius
+	)
+	Button.Size = UDim2.new(0, 0, 0, 42)
 	if Config.Color then
-		Button.BackgroundColor3 = Config.Color
-		Button.TextColor3 = Config.TextColor or Color3.new(1, 1, 1)
+		Button.Squircle.ImageColor3 = Config.Color
+		Button.Frame.TextLabel.TextColor3 = Config.TextColor or Color3.new(1, 1, 1)
 	end
-	local Connection = Button.MouseButton1Click:Connect(function()
-		if Config.Close ~= false then
-			Controller:Close()
-		end
-		Creator.SafeCallback(Config.Callback, Controller)
-	end)
-	Controller:_Track(Connection)
 	return Button
 end
 
@@ -174,6 +162,21 @@ local function createSurface(Config, Kind)
 	end
 
 	local BaseZIndex = 100 + Standalone.Index * 10
+	local Radius = tonumber(Config.Radius) or 26
+	local IsTransparent = Config.Transparent ~= false
+	local SurfaceTransparency = tonumber(Config.Transparency)
+	if SurfaceTransparency == nil then
+		if IsTransparent then
+			SurfaceTransparency = tonumber(Standalone.CodexUI and Standalone.CodexUI.TransparencyValue) or 0.15
+		else
+			SurfaceTransparency = 0
+		end
+	end
+	SurfaceTransparency = math.clamp(SurfaceTransparency, 0, 1)
+	local GlassTransparency = math.clamp(tonumber(Config.GlassTransparency) or 0.9, 0, 1)
+	local OutlineTransparency = math.clamp(tonumber(Config.OutlineTransparency) or 0.86, 0, 1)
+	local ShadowTransparency = math.clamp(tonumber(Config.ShadowTransparency) or 0.6, 0, 1)
+
 	local Overlay = New("Frame", {
 		Name = "Standalone_" .. Kind .. "_" .. Id,
 		Size = UDim2.fromScale(1, 1),
@@ -183,54 +186,99 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex,
 		Parent = Standalone.Parent,
 	})
-	local Card = New("Frame", {
+	local Shadow = New("ImageLabel", {
+		Name = "Shadow",
+		Image = "rbxassetid://8992230677",
+		ImageTransparency = 1,
+		Size = UDim2.fromOffset(380, 180),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(99, 99, 99, 99),
+		BackgroundTransparency = 1,
+		ThemeTag = {
+			ImageColor3 = "WindowShadow",
+		},
+		ZIndex = BaseZIndex,
+		Parent = Overlay,
+	})
+	local Card = Creator.NewRoundFrame(Radius, "Squircle", {
 		Name = "Card",
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, -32, 0, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		BackgroundTransparency = 0,
+		ImageTransparency = 1,
 		ThemeTag = {
-			BackgroundColor3 = "Background",
+			ImageColor3 = "PopupBackground",
 		},
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
-		New("UICorner", {
-			CornerRadius = UDim.new(0, 18),
-		}),
-		New("UIStroke", {
-			Thickness = 1,
-			Transparency = 0.72,
+		Creator.NewRoundFrame(Radius, "Glass-1.4", {
+			Name = "Glass",
+			Size = UDim2.fromScale(1, 1),
+			ImageTransparency = 1,
 			ThemeTag = {
-				Color = "Outline",
+				ImageColor3 = "PanelBackground",
 			},
+			ZIndex = BaseZIndex + 2,
+		}),
+		Creator.NewRoundFrame(Radius, "SquircleOutline", {
+			Name = "Outline",
+			Size = UDim2.fromScale(1, 1),
+			ImageTransparency = 1,
+			ThemeTag = {
+				ImageColor3 = "Outline",
+			},
+			ZIndex = BaseZIndex + 3,
 		}),
 		New("UISizeConstraint", {
-			MinSize = Vector2.new(280, 0),
-			MaxSize = Vector2.new(480, 1000),
+			MinSize = Vector2.new(286, 0),
+			MaxSize = Vector2.new(430, 1000),
 		}),
 		New("UIScale", {
 			Name = "OpenScale",
 			Scale = 0.94,
 		}),
+	})
+	local Content = New("Frame", {
+		Name = "Content",
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		ZIndex = BaseZIndex + 4,
+		Parent = Card,
+	}, {
 		New("UIPadding", {
-			PaddingTop = UDim.new(0, 20),
-			PaddingBottom = UDim.new(0, 20),
-			PaddingLeft = UDim.new(0, 20),
-			PaddingRight = UDim.new(0, 20),
+			PaddingTop = UDim.new(0, 16),
+			PaddingBottom = UDim.new(0, 16),
+			PaddingLeft = UDim.new(0, 16),
+			PaddingRight = UDim.new(0, 16),
 		}),
 		New("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			HorizontalAlignment = Enum.HorizontalAlignment.Left,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 14),
+			Padding = UDim.new(0, 18),
 		}),
 	})
 
 	Controller.UIElements.Overlay = Overlay
 	Controller.UIElements.Card = Card
+	Controller.UIElements.Content = Content
+	Controller.UIElements.Shadow = Shadow
+	Controller.UIElements.Glass = Card.Glass
+	Controller.UIElements.Outline = Card.Outline
 	Standalone.Active[Id] = Controller
+
+	local function syncShadow()
+		if Card and Shadow then
+			Shadow.Size = UDim2.fromOffset(Card.AbsoluteSize.X + 100, Card.AbsoluteSize.Y + 100)
+		end
+	end
+	syncShadow()
+	Controller:_Track(Card:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncShadow))
 
 	function Controller:Close(Immediate)
 		if self.Closed then
@@ -254,6 +302,10 @@ local function createSurface(Config, Kind)
 		else
 			Overlay.Active = false
 			Tween(Overlay, 0.14, { BackgroundTransparency = 1 }):Play()
+			Tween(Card, 0.14, { ImageTransparency = 1 }):Play()
+			Tween(Card.Glass, 0.14, { ImageTransparency = 1 }):Play()
+			Tween(Card.Outline, 0.14, { ImageTransparency = 1 }):Play()
+			Tween(Shadow, 0.14, { ImageTransparency = 1 }):Play()
 			Tween(Card.OpenScale, 0.14, { Scale = 0.94 }):Play()
 			task.delay(0.15, Destroy)
 		end
@@ -266,11 +318,15 @@ local function createSurface(Config, Kind)
 	end
 
 	Tween(Overlay, 0.16, {
-		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.38),
+		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.65),
 	}):Play()
+	Tween(Card, 0.2, { ImageTransparency = SurfaceTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+	Tween(Card.Glass, 0.2, { ImageTransparency = GlassTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+	Tween(Card.Outline, 0.2, { ImageTransparency = OutlineTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+	Tween(Shadow, 0.2, { ImageTransparency = ShadowTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
 	Tween(Card.OpenScale, 0.18, { Scale = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
 
-	return Controller, Card, BaseZIndex
+	return Controller, Content, BaseZIndex
 end
 
 local function addHeader(Controller, Card, Config, BaseZIndex)
@@ -286,7 +342,7 @@ local function addHeader(Controller, Card, Config, BaseZIndex)
 		New("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 12),
+			Padding = UDim.new(0, 14),
 		}),
 	})
 	local Icon = createIcon(Config.Icon, IconSize)
@@ -330,12 +386,16 @@ local function addHeader(Controller, Card, Config, BaseZIndex)
 		local Close = New("TextButton", {
 			Size = UDim2.fromOffset(28, 28),
 			BackgroundTransparency = 1,
-			Text = "×",
-			TextSize = 24,
-			ThemeTag = { TextColor3 = "Placeholder" },
+			Text = "",
 			ZIndex = BaseZIndex + 4,
 			Parent = Header,
 		})
+		local CloseIcon = createIcon("x", 18)
+		if CloseIcon then
+			CloseIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+			CloseIcon.Position = UDim2.fromScale(0.5, 0.5)
+			CloseIcon.Parent = Close
+		end
 		Controller:_Track(Close.MouseButton1Click:Connect(function()
 			Controller:Close()
 		end))
@@ -558,7 +618,7 @@ function Standalone:Info(Config)
 		New("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			HorizontalAlignment = Enum.HorizontalAlignment.Right,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, 9),
 		}),
 	})
 

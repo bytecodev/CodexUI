@@ -1982,6 +1982,10 @@ local function createSurface(Config, Kind)
 	end
 	SurfaceTransparency = math.clamp(SurfaceTransparency, 0, 1)
 	local OutlineTransparency = math.clamp(tonumber(Config.OutlineTransparency) or 0.78, 0, 1)
+	local DimBackground = Config.DimBackground
+	if DimBackground == nil then
+		DimBackground = Config.Modal ~= false
+	end
 
 	local Overlay = New("Frame", {
 		Name = "Standalone_" .. Kind .. "_" .. Id,
@@ -2083,7 +2087,10 @@ local function createSurface(Config, Kind)
 	end
 
 	Tween(Overlay, 0.16, {
-		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.82),
+		-- Visual dimming is intentionally decoupled from input blocking.
+		-- Non-modal standalone surfaces can darken the background while clicks
+		-- still pass through to the UI behind them.
+		BackgroundTransparency = DimBackground and (Config.OverlayTransparency or 0.82) or 1,
 	}):Play()
 	Tween(Card, 0.1, { ImageTransparency = SurfaceTransparency }):Play()
 	Tween(Card.Outline, 0.1, { ImageTransparency = OutlineTransparency }):Play()
@@ -2202,6 +2209,12 @@ function Standalone:Loading(Config)
 	Config.CanClose = Config.CanClose == true
 	if Config.Modal == nil then
 		Config.Modal = false
+	end
+	if Config.DimBackground == nil then
+		Config.DimBackground = true
+	end
+	if Config.OverlayTransparency == nil then
+		Config.OverlayTransparency = 0.72
 	end
 	local Controller, Card, BaseZIndex = createSurface(Config, "Loading")
 	addHeader(Controller, Card, Config, BaseZIndex)
@@ -2519,6 +2532,12 @@ function Standalone:Announcement(Config)
 	Passed.Id = Passed.Id or "announcement"
 	if Passed.Modal == nil then
 		Passed.Modal = false
+	end
+	if Passed.DimBackground == nil then
+		Passed.DimBackground = true
+	end
+	if Passed.OverlayTransparency == nil then
+		Passed.OverlayTransparency = 0.72
 	end
 	Passed.Title = Passed.Title or "Announcement"
 	Passed.Subtitle = Passed.Subtitle or (Passed.Author and ("by " .. tostring(Passed.Author)) or nil)

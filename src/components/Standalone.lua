@@ -181,6 +181,7 @@ local function createSurface(Config, Kind)
 		end
 	end
 	SurfaceTransparency = math.clamp(SurfaceTransparency, 0, 1)
+	local OutlineTransparency = math.clamp(tonumber(Config.OutlineTransparency) or 0.78, 0, 1)
 
 	local Overlay = New("Frame", {
 		Name = "Standalone_" .. Kind .. "_" .. Id,
@@ -204,6 +205,15 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
+		New("UIStroke", {
+			Name = "Outline",
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Thickness = tonumber(Config.OutlineThickness) or 1,
+			Transparency = 1,
+			ThemeTag = {
+				Color = "Outline",
+			},
+		}),
 		New("UISizeConstraint", {
 			MinSize = Vector2.new(286, 0),
 			MaxSize = Vector2.new(430, 1000),
@@ -234,6 +244,7 @@ local function createSurface(Config, Kind)
 	Controller.UIElements.Overlay = Overlay
 	Controller.UIElements.Card = Card
 	Controller.UIElements.Content = Content
+	Controller.UIElements.Outline = Card.Outline
 	Standalone.Active[Id] = Controller
 
 	function Controller:Close(Immediate)
@@ -259,6 +270,7 @@ local function createSurface(Config, Kind)
 			Overlay.Active = false
 			Tween(Overlay, 0.14, { BackgroundTransparency = 1 }):Play()
 			Tween(Card, 0.1, { ImageTransparency = 1 }):Play()
+			Tween(Card.Outline, 0.1, { Transparency = 1 }):Play()
 			task.delay(0.15, Destroy)
 		end
 		Creator.SafeCallback(Config.OnClose, self)
@@ -273,6 +285,7 @@ local function createSurface(Config, Kind)
 		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.82),
 	}):Play()
 	Tween(Card, 0.1, { ImageTransparency = SurfaceTransparency }):Play()
+	Tween(Card.Outline, 0.1, { Transparency = OutlineTransparency }):Play()
 
 	return Controller, Content, BaseZIndex
 end
@@ -533,11 +546,31 @@ function Standalone:Info(Config)
 	local Controller, Card, BaseZIndex = createSurface(Config, "Info")
 	addHeader(Controller, Card, Config, BaseZIndex)
 
+	local HeaderDivider = New("Frame", {
+		Name = "HeaderDivider",
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 1, 9),
+		BorderSizePixel = 0,
+		BackgroundTransparency = tonumber(Config.DividerTransparency) or 0.86,
+		ThemeTag = {
+			BackgroundColor3 = "Text",
+		},
+		ZIndex = BaseZIndex + 3,
+		Parent = Controller.UIElements.Header,
+	})
+
 	local ContentTemplate = tostring(Config.Content or Config.Message or "")
 	local Content = createLabel(ContentTemplate, 15, Enum.FontWeight.Medium, "Text", 0.12)
 	Content.LayoutOrder = 2
 	Content.Visible = ContentTemplate ~= ""
 	Content.Parent = Card
+	local ContentMinHeight = math.max(0, tonumber(Config.ContentMinHeight) or 0)
+	if ContentMinHeight > 0 then
+		New("UISizeConstraint", {
+			MinSize = Vector2.new(0, ContentMinHeight),
+			Parent = Content,
+		})
+	end
 
 	local Metrics = New("Frame", {
 		LayoutOrder = 3,
@@ -574,6 +607,7 @@ function Standalone:Info(Config)
 	})
 
 	Controller.UIElements.Content = Content
+	Controller.UIElements.HeaderDivider = HeaderDivider
 	Controller.UIElements.Metrics = Metrics
 	Controller.UIElements.Footer = Footer
 	Controller.UIElements.Buttons = Buttons
@@ -659,6 +693,7 @@ function Standalone:Announcement(Config)
 	Passed.Subtitle = Passed.Subtitle or (Passed.Author and ("by " .. tostring(Passed.Author)) or nil)
 	Passed.Icon = Passed.Icon or "megaphone"
 	Passed.Content = Passed.Content or Passed.Message
+	Passed.ContentMinHeight = Passed.ContentMinHeight or 56
 	return self:Info(Passed)
 end
 

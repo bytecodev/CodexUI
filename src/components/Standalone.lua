@@ -205,6 +205,10 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
+		New("UICorner", {
+			Name = "OutlineCorner",
+			CornerRadius = UDim.new(0, Radius),
+		}),
 		New("UIStroke", {
 			Name = "Outline",
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,

@@ -2093,13 +2093,27 @@ end
 
 local function addHeader(Controller, Card, Config, BaseZIndex)
 	local IconSize = tonumber(Config.IconSize) or 24
-	local Header = New("Frame", {
+	local HeaderContainer = New("Frame", {
 		LayoutOrder = 1,
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
 		ZIndex = BaseZIndex + 2,
 		Parent = Card,
+	}, {
+		New("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 9),
+		}),
+	})
+	local Header = New("Frame", {
+		LayoutOrder = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		ZIndex = BaseZIndex + 2,
+		Parent = HeaderContainer,
 	}, {
 		New("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
@@ -2134,6 +2148,7 @@ local function addHeader(Controller, Card, Config, BaseZIndex)
 		Subtitle = createLabel(Config.Subtitle, 13, Enum.FontWeight.Medium, "Placeholder")
 		Subtitle.Parent = Texts
 	end
+	Controller.UIElements.HeaderContainer = HeaderContainer
 	Controller.UIElements.Header = Header
 	Controller.UIElements.Icon = Icon
 	Controller.UIElements.Title = Title
@@ -2145,12 +2160,26 @@ local function addHeader(Controller, Card, Config, BaseZIndex)
 	end
 
 	if Config.CanClose then
+		-- Keep the close control out of Header's UIListLayout positioning so it can
+		-- align with the title instead of centering against title + subtitle.
+		local CloseSlot = New("Frame", {
+			Name = "CloseSlot",
+			Size = UDim2.fromOffset(28, 28),
+			BackgroundTransparency = 1,
+			ZIndex = BaseZIndex + 4,
+			Parent = Header,
+		})
+		local CloseOffsetY = tonumber(Config.CloseOffsetY)
+		if CloseOffsetY == nil then
+			CloseOffsetY = Subtitle and -5 or 0
+		end
 		local Close = New("TextButton", {
 			Size = UDim2.fromOffset(28, 28),
+			Position = UDim2.fromOffset(0, CloseOffsetY),
 			BackgroundTransparency = 1,
 			Text = "",
 			ZIndex = BaseZIndex + 4,
-			Parent = Header,
+			Parent = CloseSlot,
 		})
 		local CloseIcon = createIcon("x", 18)
 		if CloseIcon then
@@ -2161,6 +2190,7 @@ local function addHeader(Controller, Card, Config, BaseZIndex)
 		Controller:_Track(Close.MouseButton1Click:Connect(function()
 			Controller:Close()
 		end))
+		Controller.UIElements.CloseSlot = CloseSlot
 		Controller.UIElements.Close = Close
 	end
 
@@ -2349,15 +2379,15 @@ function Standalone:Info(Config)
 
 	local HeaderDivider = New("Frame", {
 		Name = "HeaderDivider",
+		LayoutOrder = 2,
 		Size = UDim2.new(1, 0, 0, 1),
-		Position = UDim2.new(0, 0, 1, 9),
 		BorderSizePixel = 0,
 		BackgroundTransparency = tonumber(Config.DividerTransparency) or 0.86,
 		ThemeTag = {
 			BackgroundColor3 = "Text",
 		},
 		ZIndex = BaseZIndex + 3,
-		Parent = Controller.UIElements.Header,
+		Parent = Controller.UIElements.HeaderContainer,
 	})
 
 	local ContentTemplate = tostring(Config.Content or Config.Message or "")

@@ -205,16 +205,15 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
-		Creator.NewRoundFrame(Radius, "Squircle-Outline", {
+		Creator.NewRoundFrame(Radius, "SquircleOutline", {
 			Name = "Outline",
 			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
 			ImageTransparency = 1,
 			Active = false,
 			ThemeTag = {
 				ImageColor3 = "Outline",
 			},
-			ZIndex = BaseZIndex + 2,
+			ZIndex = BaseZIndex + 3,
 		}),
 		New("UISizeConstraint", {
 			MinSize = Vector2.new(286, 0),

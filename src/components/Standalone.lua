@@ -181,9 +181,6 @@ local function createSurface(Config, Kind)
 		end
 	end
 	SurfaceTransparency = math.clamp(SurfaceTransparency, 0, 1)
-	local GlassTransparency = math.clamp(tonumber(Config.GlassTransparency) or 0.9, 0, 1)
-	local OutlineTransparency = math.clamp(tonumber(Config.OutlineTransparency) or 0.86, 0, 1)
-	local ShadowTransparency = math.clamp(tonumber(Config.ShadowTransparency) or 0.6, 0, 1)
 
 	local Overlay = New("Frame", {
 		Name = "Standalone_" .. Kind .. "_" .. Id,
@@ -193,22 +190,6 @@ local function createSurface(Config, Kind)
 		Active = Config.Modal ~= false,
 		ZIndex = BaseZIndex,
 		Parent = Standalone.Parent,
-	})
-	local Shadow = New("ImageLabel", {
-		Name = "Shadow",
-		Image = "rbxassetid://8992230677",
-		ImageTransparency = 1,
-		Size = UDim2.fromOffset(380, 180),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(99, 99, 99, 99),
-		BackgroundTransparency = 1,
-		ThemeTag = {
-			ImageColor3 = "WindowShadow",
-		},
-		ZIndex = BaseZIndex,
-		Parent = Overlay,
 	})
 	local Card = Creator.NewRoundFrame(Radius, "Squircle", {
 		Name = "Card",
@@ -223,31 +204,9 @@ local function createSurface(Config, Kind)
 		ZIndex = BaseZIndex + 1,
 		Parent = Overlay,
 	}, {
-		Creator.NewRoundFrame(Radius, "Glass-1.4", {
-			Name = "Glass",
-			Size = UDim2.fromScale(1, 1),
-			ImageTransparency = 1,
-			ThemeTag = {
-				ImageColor3 = "PanelBackground",
-			},
-			ZIndex = BaseZIndex + 2,
-		}),
-		Creator.NewRoundFrame(Radius, "SquircleOutline", {
-			Name = "Outline",
-			Size = UDim2.fromScale(1, 1),
-			ImageTransparency = 1,
-			ThemeTag = {
-				ImageColor3 = "Outline",
-			},
-			ZIndex = BaseZIndex + 3,
-		}),
 		New("UISizeConstraint", {
 			MinSize = Vector2.new(286, 0),
 			MaxSize = Vector2.new(430, 1000),
-		}),
-		New("UIScale", {
-			Name = "OpenScale",
-			Scale = 0.94,
 		}),
 	})
 	local Content = New("Frame", {
@@ -255,7 +214,7 @@ local function createSurface(Config, Kind)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
-		ZIndex = BaseZIndex + 4,
+		ZIndex = BaseZIndex + 2,
 		Parent = Card,
 	}, {
 		New("UIPadding", {
@@ -275,18 +234,7 @@ local function createSurface(Config, Kind)
 	Controller.UIElements.Overlay = Overlay
 	Controller.UIElements.Card = Card
 	Controller.UIElements.Content = Content
-	Controller.UIElements.Shadow = Shadow
-	Controller.UIElements.Glass = Card.Glass
-	Controller.UIElements.Outline = Card.Outline
 	Standalone.Active[Id] = Controller
-
-	local function syncShadow()
-		if Card and Shadow then
-			Shadow.Size = UDim2.fromOffset(Card.AbsoluteSize.X + 100, Card.AbsoluteSize.Y + 100)
-		end
-	end
-	syncShadow()
-	Controller:_Track(Card:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncShadow))
 
 	function Controller:Close(Immediate)
 		if self.Closed then
@@ -310,11 +258,7 @@ local function createSurface(Config, Kind)
 		else
 			Overlay.Active = false
 			Tween(Overlay, 0.14, { BackgroundTransparency = 1 }):Play()
-			Tween(Card, 0.14, { ImageTransparency = 1 }):Play()
-			Tween(Card.Glass, 0.14, { ImageTransparency = 1 }):Play()
-			Tween(Card.Outline, 0.14, { ImageTransparency = 1 }):Play()
-			Tween(Shadow, 0.14, { ImageTransparency = 1 }):Play()
-			Tween(Card.OpenScale, 0.14, { Scale = 0.94 }):Play()
+			Tween(Card, 0.1, { ImageTransparency = 1 }):Play()
 			task.delay(0.15, Destroy)
 		end
 		Creator.SafeCallback(Config.OnClose, self)
@@ -328,17 +272,13 @@ local function createSurface(Config, Kind)
 	Tween(Overlay, 0.16, {
 		BackgroundTransparency = Config.Modal == false and 1 or (Config.OverlayTransparency or 0.82),
 	}):Play()
-	Tween(Card, 0.2, { ImageTransparency = SurfaceTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-	Tween(Card.Glass, 0.2, { ImageTransparency = GlassTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-	Tween(Card.Outline, 0.2, { ImageTransparency = OutlineTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-	Tween(Shadow, 0.2, { ImageTransparency = ShadowTransparency }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
-	Tween(Card.OpenScale, 0.18, { Scale = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out):Play()
+	Tween(Card, 0.1, { ImageTransparency = SurfaceTransparency }):Play()
 
 	return Controller, Content, BaseZIndex
 end
 
 local function addHeader(Controller, Card, Config, BaseZIndex)
-	local IconSize = tonumber(Config.IconSize) or 28
+	local IconSize = tonumber(Config.IconSize) or 24
 	local Header = New("Frame", {
 		LayoutOrder = 1,
 		AutomaticSize = Enum.AutomaticSize.Y,

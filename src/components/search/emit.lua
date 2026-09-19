@@ -1,3 +1,58 @@
+--// Kira Hub - Integrated Auto Execute / Anti AFK
+--// IMPORTANT: set this to the RAW URL of this Kira Hub script.
+local KIRA_HUB_SCRIPT_URL = "https://raw.githubusercontent.com/bytecodev/CodexUI/refs/heads/main/src/components/search/emit.lua"
+
+local function setupKiraAutoExecute()
+    local queueTP =
+        (typeof(queue_on_teleport) == "function" and queue_on_teleport)
+        or (typeof(queueonteleport) == "function" and queueonteleport)
+        or (syn and typeof(syn.queue_on_teleport) == "function" and syn.queue_on_teleport)
+
+    if queueTP and KIRA_HUB_SCRIPT_URL ~= "" and not KIRA_HUB_SCRIPT_URL:find("PUT_YOUR") then
+        local queued = string.format([[
+            task.wait(2)
+            local ok, src = pcall(function()
+                return game:HttpGet(%q)
+            end)
+            if ok and type(src) == "string" then
+                local fn, err = loadstring(src)
+                if fn then
+                    pcall(fn)
+                else
+                    warn("[Kira Hub] Auto-execute loadstring failed:", err)
+                end
+            else
+                warn("[Kira Hub] Auto-execute HttpGet failed:", src)
+            end
+        ]], KIRA_HUB_SCRIPT_URL)
+
+        pcall(queueTP, queued)
+    else
+        warn("[Kira Hub] queue_on_teleport or KIRA_HUB_SCRIPT_URL is not configured.")
+    end
+end
+
+local function setupKiraAntiAFK()
+    local Players = game:GetService("Players")
+    local VirtualUser = game:GetService("VirtualUser")
+    local player = Players.LocalPlayer
+
+    if not player then
+        return
+    end
+
+    pcall(function()
+        player.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end)
+end
+
+setupKiraAutoExecute()
+setupKiraAntiAFK()
+
+--// Original Kira Hub script starts below.
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -23614,3 +23669,53 @@ end;
     print("[UI] Kira Hub ready · RightShift toggles · Dark / Light in Settings")
     v1102("boot", "game logic attached · KiraDump() in F9")
 end)()
+
+--// AUTO EXECUTE AFTER REJOIN / TELEPORT
+--// Uses the same URL already used by this script; no manual URL input needed.
+task.defer(function()
+    local queueTP =
+        queue_on_teleport
+        or queueonteleport
+        or (syn and syn.queue_on_teleport)
+
+    if not queueTP then
+        warn("[KiraHub] queue_on_teleport is not supported by this executor.")
+        return
+    end
+
+    local scriptURL = "https://raw.githubusercontent.com/bytecodev/CodexUI/refs/heads/main/src/components/search/emit.lua"
+
+    local queuedCode = [[
+        task.wait(2)
+
+        local ok, source = pcall(function()
+            return game:HttpGet("https://raw.githubusercontent.com/bytecodev/CodexUI/refs/heads/main/src/components/search/emit.lua")
+        end)
+
+        if ok and source then
+            local fn, err = loadstring(source)
+
+            if fn then
+                local ran, runErr = pcall(fn)
+                if not ran then
+                    warn("[KiraHub AutoExec] Runtime error:", runErr)
+                end
+            else
+                warn("[KiraHub AutoExec] Loadstring error:", err)
+            end
+        else
+            warn("[KiraHub AutoExec] Failed to download script:", source)
+        end
+    ]]
+
+    local ok, err = pcall(function()
+        queueTP(queuedCode)
+    end)
+
+    if ok then
+        print("[KiraHub] AutoExecute queued.")
+    else
+        warn("[KiraHub] Failed to queue:", err)
+    end
+end)
+
